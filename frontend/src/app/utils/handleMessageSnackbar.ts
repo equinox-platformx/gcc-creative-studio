@@ -18,26 +18,6 @@ import {MatSnackBar} from '@angular/material/snack-bar';
 import {AppInjector} from '../app-injector';
 import {NotificationService} from '../common/services/notification.service';
 
-function cleanErrorMessage(message: string): string {
-  if (!message || typeof message !== 'string') {
-    return (message as any) || 'Something went wrong';
-  }
-
-  let cleanMsg = message;
-
-  const descMatch = message.match(/['"]description['"]:\s*['"]([^'"]+)['"]/);
-  if (descMatch && descMatch[1]) {
-    cleanMsg = descMatch[1];
-  }
-
-  const lines = cleanMsg.split(/\r?\n|\\n/);
-  if (lines.length > 0) {
-    cleanMsg = lines[0].trim();
-  }
-
-  return cleanMsg;
-}
-
 export const handleErrorSnackbar: (
   snackBar: MatSnackBar,
   error: any,
@@ -50,21 +30,11 @@ export const handleErrorSnackbar: (
   duration = 5000,
 ) => {
   console.error(`${context} error:`, error);
-  let rawMessage =
+  const errorMessage =
     error?.error?.detail?.[0]?.msg ||
     error?.error?.detail ||
     error?.message ||
     'Something went wrong';
-
-  if (typeof rawMessage !== 'string' && rawMessage) {
-    try {
-      rawMessage = JSON.stringify(rawMessage);
-    } catch (e) {
-      // Keep as-is
-    }
-  }
-
-  const errorMessage = cleanErrorMessage(rawMessage);
 
   try {
     const notificationService = AppInjector.get(NotificationService);

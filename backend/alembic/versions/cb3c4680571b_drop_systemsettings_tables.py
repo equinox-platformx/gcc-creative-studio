@@ -15,7 +15,7 @@
 """Drop SystemSettings tables
 
 Revision ID: cb3c4680571b
-Revises: c7691a33f1fd
+Revises: 2af84fd47706
 Create Date: 2026-07-03 00:07:39.757335
 
 """

@@ -19,8 +19,6 @@ import {MODEL_CONFIGS} from '../common/config/model-config';
 
 export interface AudioState {
   model: string;
-  /** Concrete Lyria model ID used when `model === 'lyria'`. */
-  lyriaModel: string;
   prompt: string;
   negativePrompt: string;
   seed?: number;
@@ -28,8 +26,6 @@ export interface AudioState {
   selectedLanguage: string;
   selectedVoice: string;
 }
-
-export const DEFAULT_LYRIA_MODEL = 'lyria-3-clip-preview';
 
 @Injectable({
   providedIn: 'root',
@@ -39,11 +35,10 @@ export class AudioStateService {
 
   private defaultState: AudioState = {
     model: 'lyria',
-    lyriaModel: DEFAULT_LYRIA_MODEL,
     prompt: '',
     negativePrompt: '',
     seed: undefined,
-    sampleCount: 1,
+    sampleCount: 4,
     selectedLanguage: 'en-US',
     selectedVoice: 'Puck',
   };
@@ -64,18 +59,6 @@ export class AudioStateService {
         }
 
         parsedState.model = loadedModel;
-
-        const loadedLyriaModel =
-          parsedState.lyriaModel ?? this.defaultState.lyriaModel;
-        const isValidLyriaModel = MODEL_CONFIGS.some(
-          m =>
-            m.type === 'AUDIO' &&
-            m.value === loadedLyriaModel &&
-            m.value.startsWith('lyria'),
-        );
-        parsedState.lyriaModel = isValidLyriaModel
-          ? loadedLyriaModel
-          : this.defaultState.lyriaModel;
 
         return {...this.defaultState, ...parsedState};
       } catch (e) {

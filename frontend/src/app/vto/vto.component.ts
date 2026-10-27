@@ -153,6 +153,10 @@ export class VtoComponent implements OnInit, AfterViewInit {
     private galleryService: GalleryService,
   ) {
     this.activeVtoJob$ = this.searchService.activeVtoJob$;
+    this.matIconRegistry.addSvgIcon(
+      'mobile-white-gemini-spark-icon',
+      this.setPath(`${this.path}/mobile-white-gemini-spark-icon.svg`),
+    );
 
     this.firstFormGroup = this._formBuilder.group({
       modelType: ['female', Validators.required],
@@ -283,6 +287,12 @@ export class VtoComponent implements OnInit, AfterViewInit {
       this.stepper.selectedIndex = this.savedStepperIndex;
       this.cdr.detectChanges();
     }
+  }
+
+  private path = '../../assets/images';
+
+  private setPath(url: string): SafeResourceUrl {
+    return this.sanitizer.bypassSecurityTrustResourceUrl(url);
   }
 
   private loadVtoAssets(): void {
@@ -492,7 +502,8 @@ export class VtoComponent implements OnInit, AfterViewInit {
       .startVtoGeneration(payload)
       .pipe(finalize(() => (this.isLoading = false)))
       .subscribe({
-        next: () => {
+        next: (initialResponse: MediaItem) => {
+          console.log('VTO job started successfully:', initialResponse);
           // UI will update via activeVtoJob$ observable
         },
         error: err => {
