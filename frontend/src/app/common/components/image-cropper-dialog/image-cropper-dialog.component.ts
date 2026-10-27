@@ -209,7 +209,7 @@ export class ImageCropperDialogComponent implements AfterViewInit, OnDestroy {
   private loadImage(): void {
     if (this.data.imageUrl && !this.data.imageFile) {
       this.loadingMessage = 'Loading image...';
-      this.sourceAssetService.downloadAssetBlob(this.data.imageUrl).subscribe({
+      this.http.get(this.data.imageUrl, {responseType: 'blob'}).subscribe({
         next: blob => {
           const file = new File([blob], 'remote-image.png', {
             type: blob.type || 'image/png',
@@ -261,7 +261,11 @@ export class ImageCropperDialogComponent implements AfterViewInit, OnDestroy {
   }
 
   private convertImageOnBackend(file: File): Observable<Blob> {
-    return this.sourceAssetService.convertImageToPng(file);
+    const formData = new FormData();
+    formData.append('file', file);
+    // Assumes you create a new backend endpoint for this
+    const convertUrl = `${environment.backendURL}/source_assets/convert-to-png`;
+    return this.http.post(convertUrl, formData, {responseType: 'blob'});
   }
 
   // --- Start: Add Event Handlers ---
@@ -514,11 +518,6 @@ export class ImageCropperDialogComponent implements AfterViewInit, OnDestroy {
             {type: 'image/png'},
           );
           callback(croppedFile);
-        } else {
-          console.error('Failed to generate image blob from canvas.');
-          if (this.imageFile) {
-            callback(this.imageFile);
-          }
         }
       }, 'image/png');
     }

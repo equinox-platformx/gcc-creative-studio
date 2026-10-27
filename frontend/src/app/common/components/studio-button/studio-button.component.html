@@ -16,14 +16,9 @@
 
 <button
   mat-flat-button
-  [class.btn-cta]="variant === 'cta'"
-  [class.btn-glass-primary]="variant !== 'cta'"
-  [class.btn-glass-circle]="shape === 'circle'"
-  [class.btn-small]="size === 'small'"
-  [class.btn-medium]="size === 'medium'"
-  [class.btn-large]="size === 'large'"
+  [ngClass]="classes"
   [disabled]="disabled"
-  (click)="handleHostClick($event)"
 >
+
   <ng-content></ng-content>
 </button>

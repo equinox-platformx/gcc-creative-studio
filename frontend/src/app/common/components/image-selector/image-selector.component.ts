@@ -70,13 +70,6 @@ export class ImageSelectorComponent implements OnInit {
       multiSelect?: boolean;
       showFooter?: boolean;
       maxSelection?: number;
-      includeExternal?: boolean;
-      /**
-       * Only the first image of each multi-image media item can be picked.
-       * For consumers (e.g. the Izumi agent) that address a media item by id
-       * and always resolve its first index.
-       */
-      firstIndexOnly?: boolean;
     },
   ) {
     this.dialogRef.addPanelClass('image-selector-dialog');
@@ -191,15 +184,20 @@ export class ImageSelectorComponent implements OnInit {
               .find(line => line.trim() && !line.startsWith('#'))
               ?.trim();
             if (url) {
-              this.sourceAssetService.downloadExternalAsset(url).subscribe({
-                next: blob => {
+              fetch(url)
+                .then(res => {
+                  if (!res.ok)
+                    throw new Error(`HTTP error! status: ${res.status}`);
+                  return res.blob();
+                })
+                .then(blob => {
                   const fetchedFile = new File([blob], 'downloaded_image', {
                     type: blob.type,
                   });
                   this.isUploading = false;
                   this.handleFileSelect(fetchedFile);
-                },
-                error: err => {
+                })
+                .catch(err => {
                   console.error(
                     'Failed to fetch image from dropped URL',
                     url,
@@ -209,8 +207,7 @@ export class ImageSelectorComponent implements OnInit {
                   alert(
                     'Could not download the dropped image directly from the browser due to cross-origin security restrictions (CORS). Please drag the image to your Desktop first, then drag it here.',
                   );
-                },
-              });
+                });
             } else {
               this.isUploading = false;
             }

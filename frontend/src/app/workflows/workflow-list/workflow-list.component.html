@@ -23,6 +23,7 @@
       </div>
       <studio-button variant="cta" size="medium"
         mat-flat-button
+        *ngIf="authService.isUserAdmin() || authService.isUserWorkflows()"
         (click)="createNewWorkflow()"
       >
         <mat-icon>add</mat-icon>
@@ -72,7 +73,7 @@
     <div
       *ngFor="let wf of obs$ | async"
       class="workflow-card"
-      (click)="navigateToEdit(wf)"
+      (click)="navigateToHistory(wf)"
     >
       <!-- Double click to view history -->
 
@@ -93,13 +94,18 @@
         </div>
 
         <!-- Actions Right (Always visible or hover? Screenshot shows them clearly) -->
-        <div class="actions-group">
+        <div
+          class="actions-group"
+          *ngIf="authService.isUserAdmin() || authService.isUserWorkflows()"
+        >
           <button
             mat-icon-button
-            (click)="$event.stopPropagation(); navigateToHistory(wf)"
-            matTooltip="View History"
+            (click)="$event.stopPropagation()"
+            [routerLink]="['/workflows/edit', wf.id]"
+            [queryParams]="{ returnUrl: '/workflows' }"
+            matTooltip="Edit Definition"
           >
-            <mat-icon>history</mat-icon>
+            <mat-icon>edit</mat-icon>
           </button>
           <button
             mat-icon-button

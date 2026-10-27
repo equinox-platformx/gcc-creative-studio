@@ -30,7 +30,6 @@ import {
   MODEL_CONFIGS,
 } from '../../../../common/config/model-config';
 import {StepConfig} from './step.model';
-import {NodeTypes, StepStatusEnum} from '../../../workflow.models';
 
 @Component({
   selector: 'app-generic-step',
@@ -44,19 +43,14 @@ export class GenericStepComponent implements OnInit, OnChanges {
   @Input() mode: 'create' | 'edit' | 'run' = 'create';
   @Input() config!: StepConfig;
   @Input() showValidationErrors = false;
-
   @Output() delete = new EventEmitter<void>();
-  @Output() clone = new EventEmitter<void>();
-
-  StepStatusEnum = StepStatusEnum;
 
   localConfig!: StepConfig;
   private settingsSubscription?: Subscription;
   private inputModeSubscription?: Subscription;
-  private inputsSubscription?: Subscription;
   currentMaxReferenceImages = 1;
 
-  isCollapsed = false;
+  isCollapsed = true;
   inputModes: {[key: string]: 'fixed' | 'linked' | 'mixed'} = {};
   compatibleOutputs: {[key: string]: any[]} = {};
 
@@ -72,9 +66,6 @@ export class GenericStepComponent implements OnInit, OnChanges {
     }
     if (this.inputModeSubscription) {
       this.inputModeSubscription.unsubscribe();
-    }
-    if (this.inputsSubscription) {
-      this.inputsSubscription.unsubscribe();
     }
   }
 
@@ -127,25 +118,6 @@ export class GenericStepComponent implements OnInit, OnChanges {
       } else {
         this.inputModes[input.name] = 'fixed';
       }
-    });
-
-    if (this.inputsSubscription) {
-      this.inputsSubscription.unsubscribe();
-    }
-    this.inputsSubscription = inputs.valueChanges.subscribe(value => {
-      if (!value) return;
-      Object.keys(value).forEach(key => {
-        const val = value[key];
-        const isLinked =
-          val &&
-          typeof val === 'object' &&
-          !Array.isArray(val) &&
-          'step' in val &&
-          'output' in val;
-        if (isLinked && this.inputModes[key] !== 'linked') {
-          this.inputModes[key] = 'linked';
-        }
-      });
     });
 
     const settings = this.stepForm.get('settings') as FormGroup;
@@ -294,7 +266,7 @@ export class GenericStepComponent implements OnInit, OnChanges {
     this.localConfig.inputs.forEach(input => {
       // Logic for specific inputs
       if (
-        this.localConfig.type === NodeTypes.GENERATE_VIDEO &&
+        this.localConfig.type === 'generate-video' &&
         (input.name === 'input_images' || input.name === 'reference_images')
       ) {
         const showIngredients = currentMode === 'Ingredients to Video';

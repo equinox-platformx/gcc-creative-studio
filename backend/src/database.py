@@ -131,7 +131,7 @@ async def get_connection():
         user=config_service.DB_USER,
         password=config_service.DB_PASS,
         db=config_service.DB_NAME,
-        ip_type=IPTypes.PRIVATE,  # Default to Private IP for secure VPC connection
+        ip_type=IPTypes.PUBLIC,  # Adjust if using Private IP
     )
 
     return conn
@@ -141,16 +141,6 @@ async def cleanup_connector():
     """Closes the Connector to release resources."""
     await DatabaseConnector.get_instance().cleanup()
 
-
-# Connection pool settings to prevent stale/closed connections in serverless/container
-# environments (Cloud Run) when instances idle or Cloud SQL drops idle TCP connections.
-POOL_SETTINGS = {
-    "pool_pre_ping": True,
-    "pool_recycle": 1800,
-    "pool_size": 10,
-    "max_overflow": 20,
-    "pool_timeout": 30.0,
-}
 
 # Create the Async Engine
 if (
@@ -162,14 +152,12 @@ if (
         "postgresql+asyncpg://",
         async_creator=get_connection,
         echo=config_service.LOG_LEVEL == "DEBUG",
-        **POOL_SETTINGS,
     )
 else:
     # Use standard connection string (Local)
     engine = create_async_engine(
         get_conn_string(),
         echo=config_service.LOG_LEVEL == "DEBUG",
-        **POOL_SETTINGS,
     )
 
 # Create the Session Factory
@@ -193,14 +181,6 @@ class WorkerDatabase:
         self.sessionmaker = None
 
     async def __aenter__(self) -> async_sessionmaker[AsyncSession]:
-        worker_pool_settings = {
-            "pool_pre_ping": True,
-            "pool_recycle": 1800,
-            "pool_size": 5,
-            "max_overflow": 10,
-            "pool_timeout": 30.0,
-        }
-
         # Check if we need to use the Cloud SQL Connector
         if (
             config_service.INSTANCE_CONNECTION_NAME
@@ -216,21 +196,19 @@ class WorkerDatabase:
                     user=config_service.DB_USER,
                     password=config_service.DB_PASS,
                     db=config_service.DB_NAME,
-                    ip_type=IPTypes.PRIVATE,
+                    ip_type=IPTypes.PUBLIC,
                 )
 
             self.engine = create_async_engine(
                 "postgresql+asyncpg://",
                 async_creator=get_conn,
                 echo=config_service.LOG_LEVEL == "DEBUG",
-                **worker_pool_settings,
             )
         else:
             # Use standard connection string
             self.engine = create_async_engine(
                 get_conn_string(),
                 echo=config_service.LOG_LEVEL == "DEBUG",
-                **worker_pool_settings,
             )
 
         self.sessionmaker = async_sessionmaker(
