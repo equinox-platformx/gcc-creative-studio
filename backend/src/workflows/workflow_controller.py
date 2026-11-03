@@ -34,13 +34,7 @@ router = APIRouter(
     tags=["Workflows"],
     responses={404: {"description": "Not found"}},
     dependencies=[
-        Depends(
-            RoleChecker(
-                [
-                    UserRoleEnum.USER,
-                ]
-            )
-        )
+        Depends(RoleChecker([UserRoleEnum.WORKFLOWS, UserRoleEnum.ADMIN]))
     ],
 )
 
@@ -68,15 +62,10 @@ async def create_workflow(
     workflow_service: WorkflowService = Depends(),
 ):
     """Creates a new workflow definition."""
-    try:
-        created_workflow = await workflow_service.create_workflow(
-            workflow_data,
-            current_user,
-        )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
-        )
+    created_workflow = await workflow_service.create_workflow(
+        workflow_data,
+        current_user,
+    )
 
     return created_workflow
 
@@ -110,16 +99,11 @@ async def update_workflow(
 
     # 4. Pass the DTO to the service to handle the update logic.
     # Service update_workflow returns the coroutine from repo.update_workflow, so we await it.
-    try:
-        return await workflow_service.update_workflow(
-            workflow_id,
-            workflow_data,
-            current_user,
-        )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
-        )
+    return await workflow_service.update_workflow(
+        workflow_id,
+        workflow_data,
+        current_user,
+    )
 
 
 @router.get("/{workflow_id}", response_model=WorkflowModel)
@@ -176,10 +160,6 @@ async def execute_workflow(
     workflow_service: WorkflowService = Depends(),
 ):
     """This function is the controller that calls the service to generate the workflow."""
-    workflow = await workflow_service.get_workflow(current_user.id, workflow_id)
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
-
     workflow_execute_dto.args["user_auth_header"] = authorization
 
     response = await workflow_service.execute_workflow(
@@ -200,15 +180,8 @@ async def batch_execute_workflow(
     authorization: str | None = Header(default=None),
     current_user: UserModel = Depends(get_current_user),
     workflow_service: WorkflowService = Depends(),
-    _: None = Depends(
-        RoleChecker([UserRoleEnum.WORKFLOWS, UserRoleEnum.ADMIN])
-    ),
 ):
     """Executes a batch of workflow runs based on the provided items."""
-    workflow = await workflow_service.get_workflow(current_user.id, workflow_id)
-    if not workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found")
-
     # Inject user_auth_header into each item's args
     if authorization:
         for item in batch_dto.items:

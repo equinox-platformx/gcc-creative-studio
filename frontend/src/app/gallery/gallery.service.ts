@@ -40,7 +40,6 @@ import {
   GalleryFiltersState,
   GallerySearchDto,
 } from '../common/models/search.model';
-import {ConflictStrategy} from '../common/models/folder.model';
 import {WorkspaceStateService} from '../services/workspace/workspace-state.service';
 
 @Injectable({
@@ -250,7 +249,6 @@ export class GalleryService implements OnDestroy {
       id: item.id,
       tags: item.tags,
       workspaceId: item.workspaceId,
-      folderId: item.folderId,
       userId: item.userId,
       createdAt: item.createdAt,
       itemType: item.itemType || 'media_item',
@@ -260,17 +258,7 @@ export class GalleryService implements OnDestroy {
       presignedUrls: item.presignedUrls,
       presignedThumbnailUrls: item.presignedThumbnailUrls,
       metadata: metadata,
-      mimeType:
-        metadata.mimeType ||
-        metadata.mime_type ||
-        item.mimeType ||
-        (metadata.isVideo ||
-        metadata.is_video ||
-        metadata.assetType === 'youtube_video' ||
-        metadata.asset_type === 'youtube_video' ||
-        item.assetType === 'youtube_video'
-          ? 'video/mp4'
-          : undefined),
+      mimeType: metadata.mimeType || metadata.mime_type || item.mimeType,
       aspectRatio:
         metadata.aspectRatio || metadata.aspect_ratio || item.aspectRatio,
       prompt:
@@ -293,8 +281,6 @@ export class GalleryService implements OnDestroy {
         metadata.userEmail ||
         metadata.user_email,
       userPicture: item.userPicture || item.user_picture,
-      titles: item.titles || metadata.titles,
-      descriptions: item.descriptions || metadata.descriptions,
 
       generationTime:
         item.generationTime ||
@@ -381,33 +367,12 @@ export class GalleryService implements OnDestroy {
   bulkCopy(
     items: {id: number; type: string}[],
     targetWorkspaceId: number,
-    conflictStrategy?: ConflictStrategy | null,
   ): Observable<{copied_count: number}> {
     const url = `${environment.backendURL}/gallery/bulk-copy`;
-    const body: Record<string, unknown> = {
+    return this.http.post<{copied_count: number}>(url, {
       items,
       target_workspace_id: targetWorkspaceId,
-    };
-    if (conflictStrategy) {
-      body['conflict_strategy'] = conflictStrategy;
-    }
-    return this.http.post<{copied_count: number}>(url, body);
-  }
-
-  bulkMove(
-    items: {id: number; type: string}[],
-    targetWorkspaceId: number,
-    conflictStrategy?: ConflictStrategy | null,
-  ): Observable<{moved_count: number}> {
-    const url = `${environment.backendURL}/gallery/bulk-move`;
-    const body: Record<string, unknown> = {
-      items,
-      target_workspace_id: targetWorkspaceId,
-    };
-    if (conflictStrategy) {
-      body['conflict_strategy'] = conflictStrategy;
-    }
-    return this.http.post<{moved_count: number}>(url, body);
+    });
   }
 
   restoreMediaItem(id: number, itemType: string): Observable<any> {

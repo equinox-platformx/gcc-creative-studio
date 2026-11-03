@@ -15,14 +15,17 @@
  */
 
 import {Component, OnDestroy, Inject, PLATFORM_ID} from '@angular/core';
-import {NavigationEnd, Router} from '@angular/router';
+import {DomSanitizer, SafeResourceUrl} from '@angular/platform-browser';
+import {MatIconRegistry} from '@angular/material/icon';
+import {Router} from '@angular/router';
 import {UserService} from '../common/services/user.service';
 import {AuthService} from '../common/services/auth.service';
+import {environment} from '../../environments/environment';
 import {UserModel} from '../common/models/user.model';
 import {animate, style, transition, trigger} from '@angular/animations';
 import {BreakpointObserver, Breakpoints} from '@angular/cdk/layout';
 import {Subject} from 'rxjs';
-import {filter, takeUntil} from 'rxjs/operators';
+import {takeUntil} from 'rxjs/operators';
 import {isPlatformBrowser} from '@angular/common';
 
 @Component({
@@ -55,15 +58,12 @@ export class HeaderComponent implements OnDestroy {
   isDesktop = false;
   private readonly destroy$ = new Subject<void>();
   toolsMenuHovered = false;
-  generationMenuHovered = false;
-  /** Grace period before a flyout closes, so the pointer can cross to it. */
-  private static readonly MENU_CLOSE_DELAY_MS = 200;
-  private menuTimeout: ReturnType<typeof setTimeout> | null = null;
-  private genMenuTimeout: ReturnType<typeof setTimeout> | null = null;
+  private menuTimeout: any;
   isBrowser: boolean;
-  isGalleryActive = false;
 
   constructor(
+    private sanitizer: DomSanitizer,
+    public matIconRegistry: MatIconRegistry,
     public router: Router,
     public userService: UserService,
     public authService: AuthService,
@@ -77,6 +77,20 @@ export class HeaderComponent implements OnDestroy {
       this.menuFixed = storedMenuFixed === 'true';
     }
 
+    this.matIconRegistry
+      .addSvgIcon(
+        'creative-studio-icon',
+        this.setPath(`${this.path}/creative-studio-icon.svg`),
+      )
+      .addSvgIcon(
+        'fun-templates-icon',
+        this.setPath(`${this.path}/fun-templates-icon.svg`),
+      )
+      .addSvgIcon(
+        'audio-generation-icon',
+        this.setPath(`${this.path}/audio-generation-icon.svg`),
+      );
+
     this.currentUser = this.userService.getUserDetails();
 
     this.breakpointObserver
@@ -85,26 +99,17 @@ export class HeaderComponent implements OnDestroy {
       .subscribe(result => {
         this.isDesktop = result.matches;
       });
-
-    this.isGalleryActive = this.checkIsGalleryActive();
-
-    this.router.events
-      .pipe(
-        filter(
-          (event): event is NavigationEnd => event instanceof NavigationEnd,
-        ),
-        takeUntil(this.destroy$),
-      )
-      .subscribe(() => {
-        this.isGalleryActive = this.checkIsGalleryActive();
-      });
   }
 
   ngOnDestroy(): void {
-    this.clearGenMenuTimeout();
-    this.clearToolsMenuTimeout();
     this.destroy$.next();
     this.destroy$.complete();
+  }
+
+  private path = '../../assets/images';
+
+  private setPath(url: string): SafeResourceUrl {
+    return this.sanitizer.bypassSecurityTrustResourceUrl(url);
   }
 
   logout() {
@@ -126,57 +131,20 @@ export class HeaderComponent implements OnDestroy {
       : 'Click to make the menu fixed';
   }
 
-  onGenEnter() {
-    // Entering cancels any pending close so the flyout stays open.
-    this.clearGenMenuTimeout();
-    this.generationMenuHovered = true;
-  }
-
-  onGenLeave() {
-    // Always drop a pending close *before* scheduling a new one. A single exit
-    // can emit more than one `mouseleave`; an orphaned timer would otherwise
-    // fire after the user re-entered and close the flyout under the pointer.
-    this.clearGenMenuTimeout();
-    this.genMenuTimeout = setTimeout(() => {
-      this.genMenuTimeout = null;
-      this.generationMenuHovered = false;
-    }, HeaderComponent.MENU_CLOSE_DELAY_MS);
-  }
-
   onToolsEnter() {
-    // Entering cancels any pending close so the flyout stays open.
-    this.clearToolsMenuTimeout();
+    // If we enter the area, cancel any pending close action
+    if (this.menuTimeout) {
+      clearTimeout(this.menuTimeout);
+    }
     this.toolsMenuHovered = true;
   }
 
   onToolsLeave() {
-    // See onGenLeave(): cancel first, then wait before actually closing.
-    this.clearToolsMenuTimeout();
+    // When leaving, wait 200ms before actually closing.
+    // If the user enters the menu during this time, onToolsEnter()
+    // will cancel this timer, keeping the menu open.
     this.menuTimeout = setTimeout(() => {
-      this.menuTimeout = null;
       this.toolsMenuHovered = false;
-    }, HeaderComponent.MENU_CLOSE_DELAY_MS);
-  }
-
-  private clearGenMenuTimeout(): void {
-    if (this.genMenuTimeout !== null) {
-      clearTimeout(this.genMenuTimeout);
-      this.genMenuTimeout = null;
-    }
-  }
-
-  private clearToolsMenuTimeout(): void {
-    if (this.menuTimeout !== null) {
-      clearTimeout(this.menuTimeout);
-      this.menuTimeout = null;
-    }
-  }
-
-  private checkIsGalleryActive(): boolean {
-    return (
-      this.router.isActive('/gallery', false) ||
-      this.router.url.startsWith('/folders/') ||
-      this.router.url === '/folders'
-    );
+    }, 200);
   }
 }

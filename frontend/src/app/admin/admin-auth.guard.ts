@@ -56,6 +56,9 @@ export class AdminAuthGuard implements CanActivate {
       // --- SERVER SIDE ---
       // Allow navigation to render the basic app shell.
       // The client will verify localStorage and redirect if necessary.
+      console.log(
+        'AuthGuard (SSR): Allowing shell render. Client will verify auth.',
+      );
       return true;
     }
 
@@ -82,8 +85,11 @@ export class AdminAuthGuard implements CanActivate {
         'Access Denied',
       );
 
-      // Use async logout; navigation is handled by the logout method itself
-      void this.authService.logout();
+      // Use async logout and navigate *after* logout completes
+      void this.authService.logout().then(() => {
+        console.log('Forced logout due to DEV email restriction complete.');
+        // Navigation is handled by the logout method itself
+      });
       return false; // Prevent navigation
     }
   }
