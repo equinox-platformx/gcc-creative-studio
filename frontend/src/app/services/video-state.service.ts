@@ -61,7 +61,7 @@ export class VideoStateService {
       prompt: '',
       aspectRatio: '16:9',
       resolution: '1K',
-      model: 'gemini-omni-1.1-flash-preview',
+      model: 'gemini-omni-flash-preview',
       style: null,
       colorAndTone: null,
       lighting: null,

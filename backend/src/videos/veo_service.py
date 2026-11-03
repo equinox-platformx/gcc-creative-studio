@@ -12,10 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Veo Service for video generation."""
 
 import asyncio
-import base64
 import logging
 import os
 import shutil
@@ -26,19 +24,16 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import Depends, HTTPException
 from google.cloud.logging import Client as LoggerClient
 from google.cloud.logging.handlers import CloudLoggingHandler
-from google.genai import types
+from google.genai import Client, types
+import base64
 
 from src.auth.iam_signer_credentials_service import IamSignerCredentials
 from src.common.base_dto import (
-    AspectRatioEnum,
     GenerationModelEnum,
     MimeTypeEnum,
     ReferenceImageTypeEnum,
 )
-from src.common.media_utils import (
-    concatenate_videos,
-    generate_thumbnail,
-)
+from src.common.media_utils import concatenate_videos, generate_thumbnail
 from src.common.schema.genai_model_setup import GenAIModelSetup
 from src.common.schema.media_item_model import (
     AssetRoleEnum,
@@ -49,7 +44,6 @@ from src.common.schema.media_item_model import (
 )
 from src.common.storage_service import GcsService
 from src.config.config_service import config_service
-from src.folders.agent_output_folder import resolve_agent_output_folder_id
 from src.galleries.dto.gallery_response_dto import MediaItemResponse
 from src.images.repository.media_item_repository import MediaRepository
 from src.multimodal.gemini_service import GeminiService, PromptTargetEnum
@@ -69,28 +63,6 @@ VIDEO_RESOLUTION_MAP = {
 }
 
 
-def _format_omni_prompt(
-    prompt: str,
-    aspect_ratio: AspectRatioEnum | str | None,
-) -> str:
-    """Formats prompt with aspect ratio and resolution directives for Gemini Omni."""
-    if (
-        aspect_ratio == AspectRatioEnum.RATIO_9_16
-        and "9:16" not in prompt
-        and "vertical" not in prompt.lower()
-        and "portrait" not in prompt.lower()
-    ):
-        return f"{prompt}\nAspect ratio: 9:16 vertical portrait format. Resolution: 720p."
-    if (
-        aspect_ratio == AspectRatioEnum.RATIO_16_9
-        and "16:9" not in prompt
-        and "widescreen" not in prompt.lower()
-        and "landscape" not in prompt.lower()
-    ):
-        return f"{prompt}\nAspect ratio: 16:9 widescreen landscape format. Resolution: 720p."
-    return prompt
-
-
 # --- STANDALONE WORKER FUNCTION ---
 # This function will run in the background thread. It is defined outside the class.
 def _process_video_in_background(
@@ -98,13 +70,11 @@ def _process_video_in_background(
     request_dto: CreateVeoDto,
     user_email: str,
 ):  # type: ignore
-    """This is the long-running worker task.
-
-    It creates its own service instances because it runs in a separate thread.
+    """This is the long-running worker task. It creates its own service instances
+    because it runs in a separate thread.
     The long-running process that generates video, thumbnails, and updates the
     database record upon completion or failure.
     """
-    # pylint: disable=import-outside-toplevel,unused-argument
     from src.database import WorkerDatabase
 
     # In a new process, the logging configuration is reset. We must re-configure it
@@ -213,8 +183,7 @@ def _process_video_in_background(
                                     )
                                 else:
                                     worker_logger.warning(
-                                        "Could not find source video asset: %s",
-                                        ref.id,
+                                        f"Could not find source video asset: {ref.id}",
                                     )
                         if request_dto.start_image_asset_id:
                             ref = request_dto.start_image_asset_id
@@ -256,8 +225,7 @@ def _process_video_in_background(
 
                         if request_dto.reference_images:
                             worker_logger.info(
-                                "Loading %s reference images.",
-                                len(request_dto.reference_images),
+                                f"Loading {len(request_dto.reference_images)} reference images.",
                             )
                             for ref_dto in request_dto.reference_images:
                                 asset = await source_asset_repo.get_by_id(
@@ -363,9 +331,7 @@ def _process_video_in_background(
                                         )
                                 else:
                                     worker_logger.warning(
-                                        "Could not find or use generated_input: %s at index %s",
-                                        gen_input.media_item_id,
-                                        gen_input.media_index,
+                                        f"Could not find or use generated_input: {gen_input.media_item_id} at index {gen_input.media_index}",
                                     )
 
                         # Validation to prevent conflicting inputs
@@ -389,7 +355,6 @@ def _process_video_in_background(
                         if request_dto.generation_model in [
                             GenerationModelEnum.GEMINI_OMNI,
                             GenerationModelEnum.GEMINI_OMNI_FLASH_PREVIEW,
-                            GenerationModelEnum.GEMINI_OMNI_1_1_FLASH_PREVIEW,
                         ]:
                             worker_logger.info(
                                 "Running Gemini Omni video generation via Interactions API..."
@@ -482,24 +447,16 @@ def _process_video_in_background(
                                         is_turn_2 = True
                                     else:
                                         worker_logger.warning(
-                                            "Parent MediaItem %s does not have "
-                                            "interaction context in raw_data. "
-                                            "Falling back to Turn 1 R2V generation.",
-                                            request_dto.parent_media_item_id,
+                                            f"Parent MediaItem {request_dto.parent_media_item_id} does not have interaction context in raw_data. Falling back to Turn 1 R2V generation."
                                         )
                                 else:
                                     worker_logger.warning(
-                                        "Parent MediaItem %s does not have "
-                                        "interaction context. Falling back "
-                                        "to Turn 1 R2V generation.",
-                                        request_dto.parent_media_item_id,
+                                        f"Parent MediaItem {request_dto.parent_media_item_id} does not have interaction context. Falling back to Turn 1 R2V generation."
                                     )
 
                             if is_turn_2:
                                 worker_logger.info(
-                                    "Performing Turn 2 Multi-Turn generation "
-                                    "from parent MediaItem: %s",
-                                    request_dto.parent_media_item_id,
+                                    f"Performing Turn 2 Multi-Turn generation from parent MediaItem: {request_dto.parent_media_item_id}"
                                 )
                                 prompt1 = (
                                     parent_media_item.original_prompt
@@ -527,10 +484,6 @@ def _process_video_in_background(
                                 with open(local_parent_path, "rb") as f:
                                     parent_video_bytes = f.read()
 
-                                omni_prompt = _format_omni_prompt(
-                                    request_dto.prompt, request_dto.aspect_ratio
-                                )
-
                                 turn2_input = [
                                     {
                                         "type": "user_input",
@@ -557,7 +510,7 @@ def _process_video_in_background(
                                         "content": [
                                             {
                                                 "type": "text",
-                                                "text": omni_prompt,
+                                                "text": request_dto.prompt,
                                             }
                                         ],
                                     },
@@ -569,20 +522,14 @@ def _process_video_in_background(
                                         os.remove(local_parent_path)
                                     except Exception as e:
                                         worker_logger.warning(
-                                            "Failed to clean up parent video at %s: %s",
-                                            local_parent_path,
-                                            e,
+                                            f"Failed to clean up parent video at {local_parent_path}: {e}"
                                         )
                             else:
                                 worker_logger.info(
                                     "Performing Turn 1 Video Generation/R2V"
                                 )
-                                omni_prompt = _format_omni_prompt(
-                                    request_dto.prompt, request_dto.aspect_ratio
-                                )
-
                                 t1_inputs = [
-                                    {"type": "text", "text": omni_prompt}
+                                    {"type": "text", "text": request_dto.prompt}
                                 ]
 
                                 for ref_img in reference_images_for_api:
@@ -643,27 +590,9 @@ def _process_video_in_background(
                             permanent_thumbnail_gcs_uris = []
                             interaction_details = []
 
-                            duration_str = (
-                                f"{request_dto.duration_seconds}s"
-                                if request_dto.duration_seconds
-                                else "8s"
-                            )
-                            omni_response_format: dict[str, str] = {
-                                "type": "video",
-                                "duration": duration_str,
-                            }
-                            if request_dto.aspect_ratio in (
-                                AspectRatioEnum.RATIO_9_16,
-                                AspectRatioEnum.RATIO_16_9,
-                            ):
-                                omni_response_format["aspect_ratio"] = (
-                                    request_dto.aspect_ratio.value
-                                )
-
                             num_outputs = 1
                             worker_logger.info(
-                                "Queueing %s Gemini Omni generation interactions.",
-                                num_outputs,
+                                f"Queueing {num_outputs} Gemini Omni generation interactions."
                             )
 
                             async def generate_single_omni_output(i: int):
@@ -678,34 +607,19 @@ def _process_video_in_background(
                                                 model=model_name_for_api,
                                                 previous_interaction_id=interaction1_id,
                                                 input=turn2_input,
-                                                response_format=omni_response_format,
                                             )
                                         else:
                                             interaction = await asyncio.to_thread(
                                                 vertex_client.interactions.create,
                                                 model=model_name_for_api,
                                                 input=t1_inputs,
-                                                response_format=omni_response_format,
                                             )
                                         break
                                     except Exception as e:
                                         last_err = e
                                         worker_logger.warning(
-                                            "Gemini Omni interactions API call "
-                                            "attempt %s failed: %s. Retrying...",
-                                            attempt + 1,
-                                            e,
+                                            f"Gemini Omni interactions API call attempt {attempt + 1} failed: {e}. Retrying..."
                                         )
-                                        err_str = str(e)
-                                        if (
-                                            "content_blocked" in err_str
-                                            or "restricted individuals"
-                                            in err_str
-                                        ):
-                                            worker_logger.error(
-                                                "Gemini Omni interactions API call blocked by policy/content filter. Stopping retries."
-                                            )
-                                            break
                                         if attempt < max_retries - 1:
                                             await asyncio.sleep(2)
 
@@ -736,9 +650,8 @@ def _process_video_in_background(
                                                 )
 
                                 if not contents or not contents[0].data:
-                                    raise RuntimeError(
-                                        f"Interactions call {i + 1} succeeded "
-                                        "but returned no model output data."
+                                    raise Exception(
+                                        f"Interactions call {i + 1} succeeded but returned no model output data."
                                     )
 
                                 raw_video_bytes = base64.b64decode(
@@ -800,9 +713,7 @@ def _process_video_in_background(
                                             os.remove(local_path)
                                         except Exception as e:
                                             worker_logger.warning(
-                                                "Failed to clean up %s: %s",
-                                                local_path,
-                                                e,
+                                                f"Failed to clean up {local_path}: {e}"
                                             )
 
                                 return (
@@ -894,7 +805,7 @@ def _process_video_in_background(
                                 )
 
                             if operation.error:
-                                raise RuntimeError(operation.error)
+                                raise Exception(operation.error)
 
                             if (
                                 not operation
@@ -906,8 +817,6 @@ def _process_video_in_background(
                             # Download the generated video and create thumbnail
                             thumbnail_path = ""
 
-                            permanent_thumbnail_gcs_uris = []
-
                             for (
                                 generated_video
                             ) in operation.response.generated_videos:
@@ -915,12 +824,7 @@ def _process_video_in_background(
                                     generated_video.video
                                     and generated_video.video.uri
                                 ):
-                                    prefix = f"gs://{cfg.GENMEDIA_BUCKET}/"
-                                    output_path = (
-                                        generated_video.video.uri.replace(
-                                            prefix, ""
-                                        )
-                                    )
+                                    output_path = f"{generated_video.video.uri.replace(f'gs://{cfg.GENMEDIA_BUCKET}/', '')}"
 
                                     # Step 1: Download the Video from GCS
                                     local_output_path = (
@@ -961,15 +865,11 @@ def _process_video_in_background(
                                             permanent_thumbnail_gcs_uris.append(
                                                 thumbnail_gcs_uri,
                                             )
-                                            # TODO: Delete the folder created under thumbnails/
                                         except Exception as e:
-                                            # It's good practice to log or handle potential upload errors.
                                             print(
                                                 f"Failed to upload {thumbnail_path}. Error: {e}",
                                             )
                                         finally:
-                                            # This block executes whether the try block succeeded or failed.
-                                            # We use shutil.rmtree to recursively delete the temporary directory.
                                             if os.path.exists(temp_dir):
                                                 shutil.rmtree(temp_dir)
 
@@ -977,13 +877,6 @@ def _process_video_in_background(
                                 operation.response.generated_videos or [],
                             )
 
-                        end_time = time.monotonic()
-                        generation_time = end_time - start_time
-                        if request_dto.generation_model not in [
-                            GenerationModelEnum.GEMINI_OMNI,
-                            GenerationModelEnum.GEMINI_OMNI_FLASH_PREVIEW,
-                            GenerationModelEnum.GEMINI_OMNI_1_1_FLASH_PREVIEW,
-                        ]:
                             valid_generated_videos = [
                                 img
                                 for img in all_generated_videos
@@ -995,7 +888,10 @@ def _process_video_in_background(
                                 if img.video and img.video.uri
                             ]
 
-                        # --- WHEN COMPLETE, UPDATE THE RECORD IN POSTGRESQL ---
+                        end_time = time.monotonic()
+                        generation_time = end_time - start_time
+
+                        # --- WHEN COMPLETE, UPDATE THE DOCUMENT IN FIRESTORE ---
                         update_data = {
                             "status": JobStatusEnum.COMPLETED,
                             "prompt": rewritten_prompt,
@@ -1006,37 +902,6 @@ def _process_video_in_background(
                         }
                         if raw_data_dict is not None:
                             update_data["raw_data"] = raw_data_dict
-
-                        if (
-                            getattr(
-                                request_dto, "metadata_generation_model", None
-                            )
-                            and final_gcs_uris
-                        ):
-                            try:
-                                metadata = await asyncio.to_thread(
-                                    gemini_service.generate_media_metadata,
-                                    prompt=(
-                                        "Describe this generated video "
-                                        f"based on prompt: {rewritten_prompt}"
-                                    ),
-                                    media_uris=final_gcs_uris,
-                                    model_name=request_dto.metadata_generation_model,
-                                    mime_type="video/mp4",
-                                )
-                                titles = metadata.get("titles")
-                                if titles:
-                                    update_data["titles"] = titles
-                                descriptions = metadata.get("descriptions")
-                                if descriptions:
-                                    update_data["descriptions"] = descriptions
-                            except Exception as e:
-                                worker_logger.warning(
-                                    "Failed to generate metadata for media "
-                                    "item %s: %s",
-                                    media_item_id,
-                                    e,
-                                )
 
                         await media_repo.update(media_item_id, update_data)
                         worker_logger.info(
@@ -1086,7 +951,6 @@ def _process_video_concatenation_in_background(
     request_dto: ConcatenateVideosDto,
 ):
     """Background worker to concatenate multiple videos."""
-    # pylint: disable=import-outside-toplevel
     from src.database import WorkerDatabase
 
     worker_logger = logging.getLogger(f"video_concat_worker.{media_item_id}")
@@ -1155,9 +1019,7 @@ def _process_video_concatenation_in_background(
                                 (".mp4", ".mov", ".webm"),
                             ):
                                 worker_logger.warning(
-                                    "Skipping non-video URI for %s '%s'",
-                                    video_input.type,
-                                    video_input.id,
+                                    f"Skipping non-video URI for {video_input.type} '{video_input.id}'",
                                 )
                                 continue
 
@@ -1170,7 +1032,7 @@ def _process_video_concatenation_in_background(
                                 destination_file_path=f"{temp_dir}/{video_input.id}.mp4",
                             )
                             if not local_path:
-                                raise RuntimeError(
+                                raise Exception(
                                     f"Failed to download video: {gcs_uri}"
                                 )
                             local_video_paths.append(local_path)
@@ -1183,7 +1045,7 @@ def _process_video_concatenation_in_background(
                             output_path=final_video_path,
                         )
                         if not concatenated_path:
-                            raise RuntimeError("ffmpeg concatenation failed.")
+                            raise Exception("ffmpeg concatenation failed.")
 
                         # 3. Upload the final video
                         final_gcs_uri = await asyncio.to_thread(
@@ -1193,7 +1055,7 @@ def _process_video_concatenation_in_background(
                             mime_type="video/mp4",
                         )
                         if not final_gcs_uri:
-                            raise RuntimeError(
+                            raise Exception(
                                 "Failed to upload final concatenated video.",
                             )
 
@@ -1225,14 +1087,12 @@ def _process_video_concatenation_in_background(
                         }
                         await media_repo.update(media_item_id, update_data)
                         worker_logger.info(
-                            "Successfully concatenated videos for job %s",
-                            media_item_id,
+                            f"Successfully concatenated videos for job {media_item_id}",
                         )
 
                     except Exception as e:
                         worker_logger.error(
-                            "Video concatenation task failed: %s",
-                            e,
+                            f"Video concatenation task failed: {e}",
                             exc_info=True,
                         )
                         error_update_data = {
@@ -1251,15 +1111,12 @@ def _process_video_concatenation_in_background(
 
     except Exception as e:
         worker_logger.error(
-            "Video concatenation worker failed to initialize: %s",
-            e,
+            f"Video concatenation worker failed to initialize: {e}",
             exc_info=True,
         )
 
 
 class VeoService:
-    """Service to handle video generation requests using Google's Veo API."""
-
     def __init__(
         self,
         media_repo: MediaRepository = Depends(),
@@ -1397,12 +1254,8 @@ class VeoService:
                 )
 
         # 1. Create a placeholder MediaItem (without ID, let DB generate it)
-        folder_id = await resolve_agent_output_folder_id(
-            self.media_repo.db, request_dto.workspace_id, user
-        )
         placeholder_item = MediaItemModel(
             workspace_id=request_dto.workspace_id,
-            folder_id=folder_id,
             user_email=user.email,
             user_id=user.id,
             mime_type=MimeTypeEnum.VIDEO_MP4,
@@ -1423,9 +1276,6 @@ class VeoService:
             source_assets=source_assets or None,
             gcs_uris=[],
             thumbnail_uris=[],
-            comment=getattr(request_dto, "file_name", None),
-            titles=request_dto.titles,
-            descriptions=request_dto.descriptions,
         )
 
         # 2. Save to DB to get the ID
@@ -1499,12 +1349,8 @@ class VeoService:
                 )
 
         # 1. Create placeholder (let DB generate ID)
-        folder_id = await resolve_agent_output_folder_id(
-            self.media_repo.db, request_dto.workspace_id, user
-        )
         placeholder_item = MediaItemModel(
             workspace_id=request_dto.workspace_id,
-            folder_id=folder_id,
             user_email=user.email,
             user_id=user.id,
             mime_type=MimeTypeEnum.VIDEO_MP4,
@@ -1522,7 +1368,6 @@ class VeoService:
                     i.model_dump() for i in request_dto.inputs
                 ],
             },
-            comment=getattr(request_dto, "file_name", None),
         )
 
         # 2. Save to DB

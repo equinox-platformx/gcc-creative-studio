@@ -153,9 +153,7 @@ class GcsService:
                     f"Cannot upload file, not found at: {local_path}",
                 )
 
-            fresh_client = storage.Client(project=self.cfg.PROJECT_ID)
-            bucket = fresh_client.bucket(self.bucket_name)
-            blob = bucket.blob(destination_blob_name)
+            blob = self.bucket.blob(destination_blob_name)
             blob.upload_from_filename(local_path, content_type=mime_type)
             return f"gs://{self.bucket_name}/{destination_blob_name}"
         except exceptions.NotFound:
@@ -183,9 +181,7 @@ class GcsService:
 
         """
         try:
-            fresh_client = storage.Client(project=self.cfg.PROJECT_ID)
-            bucket = fresh_client.bucket(self.bucket_name)
-            blob = bucket.blob(destination_blob_name)
+            blob = self.bucket.blob(destination_blob_name)
             blob.upload_from_string(content_bytes, content_type=mime_type)
             return f"gs://{self.bucket_name}/{destination_blob_name}"
         except exceptions.NotFound:

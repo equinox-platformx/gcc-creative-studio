@@ -48,15 +48,7 @@ module.exports = function (config) {
     customLaunchers: {
       ChromeHeadlessCI: {
         base: 'ChromeHeadless',
-        // Fixed desktop viewport so specs that measure rendered layout
-        // (e.g. header menu geometry behind `@media (min-width: 768px)`)
-        // behave the same everywhere. Headless Chrome defaults to 800x600.
-        flags: [
-          '--no-sandbox',
-          '--disable-gpu',
-          '--disable-dev-shm-usage',
-          '--window-size=1366,900',
-        ],
+        flags: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
       },
     },
     singleRun: false,

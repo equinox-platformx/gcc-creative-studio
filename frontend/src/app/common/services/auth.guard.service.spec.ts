@@ -20,7 +20,6 @@ import {Router} from '@angular/router';
 
 import {AuthGuardService} from './auth.guard.service';
 import {AuthService} from './auth.service';
-import {UserService} from './user.service';
 
 describe('AuthGuardService', () => {
   let service: AuthGuardService;
@@ -30,9 +29,8 @@ describe('AuthGuardService', () => {
       imports: [HttpClientTestingModule],
       providers: [
         AuthGuardService,
-        {provide: AuthService, useValue: {isLoggedIn: () => true}},
-        {provide: Router, useValue: {navigate: jasmine.createSpy('navigate')}},
-        {provide: UserService, useValue: {getUserDetails: () => null}},
+        {provide: AuthService, useValue: {}},
+        {provide: Router, useValue: {}},
       ],
     });
     service = TestBed.inject(AuthGuardService);

@@ -50,14 +50,11 @@ export enum JobStatus {
 export interface MediaItem {
   id: number;
   userEmail?: string;
-  folderId?: number | null;
   createdAt?: string; // ISO 8601 date string
   updatedAt?: string; // ISO 8601 date string
   // itemType and assetType removed as per refactoring
 
   // Common fields across media types
-  titles?: string[];
-  descriptions?: string[];
   prompt?: string;
   originalPrompt?: string;
   rewrittenPrompt?: string;
